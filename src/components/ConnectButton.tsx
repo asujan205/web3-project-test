@@ -137,7 +137,7 @@ export default function ConnectButton() {
     }
   }
 
-  const getBalance = useCallback(async () => {
+  const valueload = useCallback(async () => {
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
     const accountAddress = await signer.getAddress();
@@ -153,9 +153,7 @@ export default function ConnectButton() {
   }, [connected]);
 
   useEffect(() => {
-    if (connected) {
-      getBalance();
-    }
+    connected && valueload();
   }, [connected]);
 
   return (
