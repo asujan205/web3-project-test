@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import Web3 from "web3";
-import { useWeb3React } from "@web3-react/core";
+
 import {
   Button,
   Box,
@@ -16,7 +15,9 @@ import {
   ModalCloseButton,
 } from "@chakra-ui/react";
 import { useDisclosure, useToast } from "@chakra-ui/react";
-import { injected } from "../config/wallets";
+
+import { ethers } from "ethers";
+import { connectWallet } from "../config/wallets";
 import abi from "./abi.json";
 import { AbiItem } from "web3-utils";
 
@@ -27,7 +28,7 @@ declare global {
 }
 
 export default function ConnectButton() {
-  const { account, active, activate, library, deactivate } = useWeb3React();
+  // const { account, active, activate, library, deactivate } = useWeb3React();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [connected, setConnected] = useState<boolean>(false);
   const [balance, setBalance] = useState<string>("0");
@@ -38,11 +39,18 @@ export default function ConnectButton() {
   const [gasFee, setGasFee] = useState<string>("");
   const [gasLimit, setGasLimit] = useState<number>(0);
   const toast = useToast();
+  const [account, setAccount] = useState<string>("");
 
-  function handleConnectWallet() {
-    connected ? deactivate() : activate(injected);
-    setConnected(!connected);
-  }
+  const HandleWalletConnect = async () => {
+    if (!connected) {
+      const { address, status } = await connectWallet();
+
+      setAccount(address);
+      setConnected(true);
+    }
+    setAccount("");
+    setConnected(false);
+  };
 
   function handleMode() {
     setMode(mode === "BNB" ? "BabyDoge" : "BNB");
@@ -70,102 +78,99 @@ export default function ConnectButton() {
       });
     }
 
-    const web3 = new Web3(library.provider);
-    var block = await web3.eth.getBlock("latest");
-    setGasLimit(block.gasLimit);
+    const web3 = new ethers.providers.Web3Provider(window.ethereum);
 
-    const gasPrice = await web3.eth.getGasPrice();
-    setGasFee(toGWei(web3, gasPrice.toString()));
+    var block = await web3.getBlock("latest");
+
+    const gasPrice = await web3.getGasPrice();
+    setGasFee(toGWei(gasPrice.toString()));
 
     onOpen();
   }
 
   const sendBaby = useCallback(async () => {
-    const web3 = new Web3(library.provider);
-    const ctx = new web3.eth.Contract(
-      abi as AbiItem[],
-      "0xc748673057861a797275CD8A068AbB95A902e8de"
+    const web3 = new ethers.providers.Web3Provider(window.ethereum);
+    const ctx = new ethers.Contract(
+      "0xc748673057861a797275CD8A068AbB95A902e8de",
+      abi,
+      web3.getSigner()
     );
 
-    await ctx.methods.approve(account, sendAmount).call();
-    await ctx.methods.transfer(recieverAdd, sendAmount).send();
-  }, [account, library]);
+    const approveTx = await ctx.approve(account, sendAmount);
+    await approveTx.wait();
+    const sendTx = await ctx.transfer(recieverAdd, sendAmount);
+    await sendTx.wait();
+  }, [account]);
 
   const sendAction = useCallback(async () => {
-    const web3 = new Web3(library.provider);
+    const web3 = new ethers.providers.Web3Provider(window.ethereum);
 
     const txParams: any = {
       from: account,
       to: recieverAdd,
 
-      value: Web3.utils.toWei(sendAmount.toString(), "ether"),
+      value: ethers.utils.parseEther(sendAmount.toString()),
     };
     console.log(txParams);
-    await web3.eth.sendTransaction(txParams, (error: any, hash: any) => {
-      if (error) {
-        console.error(error);
-      } else {
-        console.log(`Transaction hash: ${hash}`);
-        web3.eth.getTransaction(hash, (error, transaction) => {
-          if (error) {
-            return;
-          }
+    (async () => {
+      try {
+        const txResponse = await web3.getSigner().sendTransaction(txParams);
 
-          console.log(`Transaction data: ${transaction?.input}`);
-        });
+        console.log(`Transaction hash: ${txResponse.hash}`);
+
+        // Wait for the transaction to be mined (optional)
+        await txResponse.wait();
+
+        const tx = await web3.getTransaction(txResponse.hash);
+        console.log(`Transaction data: ${tx.data}`);
+      } catch (error) {
+        console.error("Transaction error:", error);
       }
-    });
+    })();
     onClose();
-    valueload();
-  }, [account, library, recieverAdd, sendAmount]);
+  }, [account, recieverAdd, sendAmount]);
 
-  function fromWei(
-    web3: { utils: { fromWei: (arg0: any) => any } },
-    val: { toString: () => any }
-  ) {
+  function fromWei(val: any) {
     if (val) {
       val = val.toString();
-      return web3.utils.fromWei(val);
+      return ethers.utils.formatUnits(val, "ether");
     } else {
       return "0";
     }
   }
 
-  function toGWei(web3: any, val: string) {
+  function toGWei(val: any) {
     if (val) {
-      return web3.utils.fromWei(val, "gwei");
+      return ethers.utils.formatUnits(val, "gwei");
     } else {
       return "0";
     }
   }
 
-  const valueload = useCallback(async () => {
-    const web3 = new Web3(library.provider);
-    const ctx = new web3.eth.Contract(
-      abi as AbiItem[],
-      "0xc748673057861a797275CD8A068AbB95A902e8de"
+  const getBalance = useCallback(async () => {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const accountAddress = await signer.getAddress();
+    const bnbBalance = await provider.getBalance(accountAddress);
+    const babyContract = new ethers.Contract(
+      "0xc748673057861a797275CD8A068AbB95A902e8de",
+      abi,
+      provider
     );
-    console.log(ctx);
-    if (account) {
-      const value = await web3.eth.getBalance(account);
-      setBalance(Number(fromWei(web3, value)).toFixed(5));
-
-      const gasPrice = await web3.eth.getGasPrice();
-      setGasFee(gasPrice);
-
-      // const value1 = await ctx.methods.balanceOf(account).call({gasPrice: Number(gasPrice) * 100});
-      // console.log('[baby amount]', value1)
-      // setBabyBalance(value1);
-    }
-  }, [account, library]);
+    const babyBalance = await babyContract.balanceOf(accountAddress);
+    setBalance((parseInt(bnbBalance._hex, 16) / 10 ** 18).toFixed(4));
+    setBabyBalance((parseInt(babyBalance._hex, 16) / 10 ** 18).toFixed(4));
+  }, [connected]);
 
   useEffect(() => {
-    active && valueload();
-  }, [account, active, valueload]);
+    if (connected) {
+      getBalance();
+    }
+  }, [connected]);
 
   return (
     <>
-    <h1 className="title">Metamask login demo from Enva Division</h1>
+      <h1 className="title">Metamask login demo from Enva Division</h1>
       {account ? (
         <Box
           display="block"
@@ -273,7 +278,7 @@ export default function ConnectButton() {
           </Box>
           <Box display="flex" justifyContent="center" alignItems="center">
             <Button
-              onClick={handleConnectWallet}
+              onClick={HandleWalletConnect}
               bg="#158DE8"
               color="white"
               fontWeight="medium"
@@ -318,7 +323,7 @@ export default function ConnectButton() {
       ) : (
         <Box bg="white" p="4" borderRadius="xl">
           <Button
-            onClick={handleConnectWallet}
+            onClick={HandleWalletConnect}
             bg="#158DE8"
             color="white"
             fontWeight="medium"
