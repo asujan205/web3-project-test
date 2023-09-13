@@ -40,16 +40,15 @@ export default function ConnectButton() {
   const [gasLimit, setGasLimit] = useState<number>(0);
   const toast = useToast();
   const [account, setAccount] = useState<string>("");
-
-  const HandleWalletConnect = async () => {
+  const handleConnectWallet = async () => {
     if (!connected) {
-      const { address, status } = await connectWallet();
-
+      const { address } = await connectWallet();
       setAccount(address);
       setConnected(true);
+    } else {
+      setConnected(false);
+      setAccount("");
     }
-    setAccount("");
-    setConnected(false);
   };
 
   function handleMode() {
@@ -129,15 +128,6 @@ export default function ConnectButton() {
     })();
     onClose();
   }, [account, recieverAdd, sendAmount]);
-
-  function fromWei(val: any) {
-    if (val) {
-      val = val.toString();
-      return ethers.utils.formatUnits(val, "ether");
-    } else {
-      return "0";
-    }
-  }
 
   function toGWei(val: any) {
     if (val) {
@@ -278,7 +268,7 @@ export default function ConnectButton() {
           </Box>
           <Box display="flex" justifyContent="center" alignItems="center">
             <Button
-              onClick={HandleWalletConnect}
+              onClick={handleConnectWallet}
               bg="#158DE8"
               color="white"
               fontWeight="medium"
@@ -323,7 +313,7 @@ export default function ConnectButton() {
       ) : (
         <Box bg="white" p="4" borderRadius="xl">
           <Button
-            onClick={HandleWalletConnect}
+            onClick={handleConnectWallet}
             bg="#158DE8"
             color="white"
             fontWeight="medium"
